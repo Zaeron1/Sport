@@ -590,6 +590,7 @@
       document.body.classList.toggle("paused",state.paused);
       if(state.paused){ clearInterval(state.timerId); $("exerciseVideo").pause(); }
       else{ if(state.phase==="exercise") loadVideo(state.queue[state.index]); startEngine(); }
+      syncSession();
     }
 
     /* ================ Navigation ================= */
@@ -598,7 +599,7 @@
       state.index--;
       updateProgress();
       launchPrep();
-      if(window.syncSession) window.syncSession();
+      syncSession();
     }
 
     function handleNext(){
@@ -606,10 +607,10 @@
         state.index++;
         updateProgress();
         launchPrep();
-        if(window.syncSession) window.syncSession();
+        syncSession();
       } else {
         finishWorkout();
-        if(window.syncSession) window.syncSession();
+        syncSession();
       }
     }
 
@@ -631,7 +632,7 @@
       $("workoutScreen").classList.add("active");
       launchPrep(); 
       startEngine();
-      syncSession(); // 🔹 Ajouté ici
+      syncSession();
     });
 
     /* ================ Stats ================= */
@@ -664,51 +665,60 @@
   </script>
 
   <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-analytics.js";
-  import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-analytics.js";
+import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyBco7exHVQc97BVNcn8mk8WfTbss1ZJH9Y",
-    authDomain: "sport-56ce4.firebaseapp.com",
-    projectId: "sport-56ce4",
-    storageBucket: "sport-56ce4.firebasestorage.app",
-    messagingSenderId: "465586305675",
-    appId: "1:465586305675:web:c938803c05e80528a7328e",
-    measurementId: "G-J7EL484C6W"
-  };
+const firebaseConfig = {
+  apiKey: "AIzaSyBco7exHVQc97BVNcn8mk8WfTbss1ZJH9Y",
+  authDomain: "sport-56ce4.firebaseapp.com",
+  projectId: "sport-56ce4",
+  storageBucket: "sport-56ce4.firebasestorage.app",
+  messagingSenderId: "465586305675",
+  appId: "1:465586305675:web:c938803c05e80528a7328e",
+  measurementId: "G-J7EL484C6W"
+};
 
-  const app = initializeApp(firebaseConfig);
-  const analytics = getAnalytics(app);
-  const db = getDatabase(app);
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+const db = getDatabase(app);
 
-  // Synchronisation : écrire dans la base à chaque changement
-  function syncSession() {
-    set(ref(db, "session"), {
-      phase: state.phase,
-      index: state.index,
-      queue: state.queue
-    });
-  }
-
-  // Appelle syncSession dans handleNext et gotoPrev
-  window.syncSession = syncSession;
-
-  // Écoute les changements en temps réel
-  onValue(ref(db, "session"), (snapshot) => {
-    const data = snapshot.val();
-    if (data) {
-      state.phase = data.phase;
-      state.index = data.index;
-      state.queue = data.queue;
-      updateProgress();
-      if (state.phase === "prep") launchPrep();
-      else if (state.phase === "exercise") startExercise();
-      else if (state.phase === "rest") startRest();
-      else if (state.phase === "delay") startDelay();
-      else if (state.phase === "finished") finishWorkout();
-    }
+// Synchronisation : écrire dans la base à chaque changement d'état
+function syncSession() {
+  set(ref(db, "session"), {
+    phase: state.phase,
+    index: state.index,
+    queue: state.queue,
+    totalSec: state.totalSec,
+    remaining: state.remaining,
+    paused: state.paused
   });
-  </script>
+}
+window.syncSession = syncSession;
+
+// Écoute les changements en temps réel
+onValue(ref(db, "session"), (snapshot) => {
+  const data = snapshot.val();
+  if (data) {
+    // On met à jour tout l'état local
+    state.phase = data.phase;
+    state.index = data.index;
+    state.queue = data.queue;
+    state.totalSec = data.totalSec;
+    state.remaining = data.remaining;
+    state.paused = data.paused;
+    updateProgress();
+    updateChronos();
+    document.body.classList.toggle("paused", state.paused);
+
+    // Affiche la bonne phase
+    if (state.phase === "prep") launchPrep();
+    else if (state.phase === "exercise") startExercise();
+    else if (state.phase === "rest") startRest();
+    else if (state.phase === "delay") startDelay();
+    else if (state.phase === "finished") finishWorkout();
+  }
+});
+</script>
 </body>
 </html>
