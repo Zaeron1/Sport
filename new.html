@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Séance de Sport</title>
+  <style>
+    :root {
+      /* Couleurs thème sombre */
+      --bg: #121212;
+      --surface: #1e1e1e;
+      --surface-alt: #2a2a2a;
+      --text: #e0e0e0;
+      --primary: #1e88e5;
+      --green:  #2e7d32; /* exercice */
+      --orange: #ef6c00; /* repos */
+      --grey:   #424242; /* préparation */
+      --red:    #c62828; /* délai retour */
+    }
+    * { box-sizing: border-box; }
+    html,body{ margin:0; }
+    body{
+      min-height:100vh; background:var(--bg); color:var(--text);
+      font-family:"Segoe UI",Arial,sans-serif; display:flex; flex-direction:column; align-items:center; overflow-y:auto;
+    }
+
+    /* ======== États paused ======== */
+    body.paused .timer-value{ opacity:0.3; }
+    body.paused #exerciseName{ opacity:0.3; }
+
+    /* ======== Écrans ======== */
+    .screen{ display:none; width:100%; max-width:1100px; padding:20px; }
+    .screen.active{ display:flex; flex-direction:column; align-items:center; gap:30px; }
+
+    /* ======== Setup ======== */
+    #setupScreen label{ display:flex; flex-direction:column; gap:8px; font-size:1.1rem; }
+    #setupScreen input{ padding:15px 20px; border:none; border-radius:12px; background:var(--surface-alt); color:var(--text); width:220px; font-size:1.4rem; text-align:center; }
+    #setupScreen button{ padding:15px 40px; border:none; border-radius:14px; background:var(--primary); color:#fff; font-size:1.4rem; font-weight:600; cursor:pointer; transition:background 0.3s; }
+    #setupScreen button:hover{ background:#1565c0; }
+
+    /* ======== Capsules ======== */
+    .capsule{ width:100%; background:var(--surface); border-radius:30px; padding:20px; text-align:center; }
+
+    /* ======== Timers ======== */
+    .timers{ display:flex; gap:20px; width:100%; }
+    .timer-box{ flex:1; cursor:pointer; }
+    .timer-title{ margin:0 0 8px; font-size:1rem; opacity:0.7; }
+    .timer-value{ font-size:3.5rem; font-variant-numeric:tabular-nums; user-select:none; }
+
+    /* ======== Boutons ======== */
+    .controls{ display:flex; gap:20px; width:100%; }
+    .controls button{ flex:1; padding:15px; border:none; border-radius:30px; background:var(--primary); color:#fff; font-size:1.25rem; cursor:pointer; transition:background 0.3s; }
+    .controls button:hover{ background:#1565c0; }
+
+    /* ======== Barre de progression ======== */
+    #progressWrapper{ display:flex; align-items:center; gap:10px; width:100%; }
+    #progressBar{ flex:1; background:#333; height:16px; border-radius:10px; overflow:hidden; }
+    #progressFill{ height:100%; width:0%; background:var(--primary); transition:width 0.3s; }
+    #progressText{ width:80px; text-align:center; font-size:1rem; }
+
+    /* ======== Vidéo ======== */
+    #videoFrame{ width:100%; background:var(--surface); border-radius:30px; padding:20px; }
+    video{ width:100%; height:auto; max-height:55vh; border-radius:20px; display:block; }
+    #videoError{ color:var(--red); text-align:center; margin-top:10px; }
+    .hidden{ display:none !important; }
+
+    /* ======== Phases couleur ======== */
+    .prep-phase{    background:var(--grey)   !important; }
+    .exercise-phase{background:var(--green)  !important; }
+    .rest-phase{    background:var(--orange) !important; }
+    .delay-phase{   background:var(--red)    !important; }
+    .idle-phase{    background:var(--surface)!important; }
+
+    /* ======== Setup Grid ======== */
+    .setup-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 30px 40px;
+      margin: 30px 0 20px 0;
+      width: 100%;
+      max-width: 900px;
+    }
+    .setup-field {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      background: var(--surface);
+      border-radius: 18px;
+      padding: 18px 22px;
+      box-shadow: 0 2px 12px #0002;
+    }
+    .setup-field label {
+      font-size: 1.15rem;
+      font-weight: 500;
+      color: var(--primary);
+      margin-bottom: 2px;
+    }
+    .setup-field input[type="number"] {
+      padding: 13px 18px;
+      border: none;
+      border-radius: 10px;
+      background: var(--surface-alt);
+      color: var(--text);
+      font-size: 1.3rem;
+      text-align: center;
+      box-shadow: 0 1px 4px #0001;
+      outline: none;
+      transition: background 0.2s;
+    }
+    .setup-field input[type="number"]:focus {
+      background: #222;
+    }
+
+    /* ======== Custom Select ======== */
+    .custom-select {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .custom-select select {
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      padding: 13px 40px 13px 18px;
+      border: none;
+      border-radius: 10px;
+      background: var(--surface-alt);
+      color: var(--text);
+      font-size: 1.3rem;
+      box-shadow: 0 1px 4px #0001;
+      outline: none;
+      width: 100%;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .custom-select select:focus {
+      background: #222;
+    }
+    .select-arrow {
+      position: absolute;
+      right: 18px;
+      pointer-events: none;
+      font-size: 1.3rem;
+      color: var(--primary);
+    }
+
+    /* ======== Start Button ======== */
+    .big-btn {
+      margin-top: 30px;
+      padding: 18px 60px;
+      border: none;
+      border-radius: 22px;
+      background: linear-gradient(90deg, var(--primary), #1565c0);
+      color: #fff;
+      font-size: 1.7rem;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 2px 12px #0003;
+      transition: background 0.3s, transform 0.2s;
+    }
+    .big-btn:hover {
+      background: linear-gradient(90deg, #1565c0, var(--primary));
+      transform: scale(1.04);
+    }
+
+    /* ======== Stats Screen ======== */
+    #statsScreen h1 {
+      margin-bottom: 30px;
+      color: var(--primary); /* couleur principale */
+      font-size: 2.2rem;
+      text-align: center;
+    }
+    .stats-cards {
+      display: flex;
+      gap: 30px;
+      justify-content: center;
+      margin-bottom: 30px;
+    }
+    .stats-card {
+      background: var(--surface);
+      border-radius: 18px;
+      padding: 22px 38px;
+      box-shadow: 0 2px 12px #0002;
+      text-align: center;
+      min-width: 140px;
+    }
+    .stats-label {
+      font-size: 1.1rem;
+      color: var(--primary);
+      margin-bottom: 8px;
+    }
+    .stats-value {
+      font-size: 2.1rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .stats-chart {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 30px;
+    }
+    #pieChart {
+      background: var(--surface-alt);
+      border-radius: 50%;
+      box-shadow: 0 2px 12px #0002;
+    }
+    .pie-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 24px;
+      justify-content: center;
+      margin-top: 12px;
+    }
+    .pie-legend-item {
+      display: flex;
+      align-items: center;
+      font-size: 1.05rem;
+      color: #fff;
+      background: none;
+    }
+    .pie-legend-color {
+      width: 18px;
+      height: 18px;
+      border-radius: 5px;
+      margin-right: 8px;
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+  <!-- =========== Écran Setup =========== -->
+  <div id="setupScreen" class="screen active">
+    <h1>Configure ta séance</h1>
+    <div class="setup-grid">
+      <div class="setup-field">
+        <label for="exDuration">Durée exercice</label>
+        <input type="number" id="exDuration" value="60" min="5" />
+      </div>
+      <div class="setup-field">
+        <label for="restDuration">Durée repos</label>
+        <input type="number" id="restDuration" value="15" min="5" />
+      </div>
+      <div class="setup-field">
+        <label for="exCount">Nombre d'exercices</label>
+        <input type="number" id="exCount" value="25" min="1" />
+      </div>
+      <div class="setup-field">
+        <label for="exType">Type d'exercice</label>
+        <div class="custom-select">
+          <select id="exType">
+            <option value="all">Tout le corps</option>
+            <option value="abdos">Abdos</option>
+            <option value="dos">Dos</option>
+            <option value="jambes">Jambes</option>
+            <option value="bras">Bras</option>
+          </select>
+          <span class="select-arrow">&#9662;</span>
+        </div>
+      </div>
+      <div class="setup-field">
+        <label for="autoMode">Mode automatique</label>
+        <div class="custom-select">
+          <select id="autoMode">
+            <option value="yes">Oui</option>
+            <option value="no">Non</option>
+          </select>
+          <span class="select-arrow">&#9662;</span>
+        </div>
+      </div>
+    </div>
+    <button id="startBtn" class="big-btn">Démarrer</button>
+  </div>
+
+  <!-- =========== Écran Workout =========== -->
+  <div id="workoutScreen" class="screen">
+    <!-- Timers -->
+    <div class="timers">
+      <div id="exoCapsule" class="capsule timer-box idle-phase">
+        <p class="timer-title">Chrono par exo</p>
+        <div id="chronoExo" class="timer-value">00</div>
+      </div>
+      <div class="capsule timer-box">
+        <p class="timer-title">Chrono général</p>
+        <div id="chronoGeneral" class="timer-value">00:00</div>
+      </div>
+    </div>
+
+    <!-- Nom exercice -->
+    <div id="exerciseName" class="capsule" style="font-size:2rem;">Prêt&nbsp;?</div>
+
+    <!-- Boutons navigation -->
+    <div class="controls">
+      <button id="prevBtn">Exo précédent</button>
+      <button id="nextBtn">Exo suivant</button>
+    </div>
+
+    <!-- Progression -->
+    <div id="progressWrapper">
+      <div id="progressBar"><div id="progressFill"></div></div>
+      <div id="progressText">0/0</div>
+    </div>
+
+    <!-- Vidéo -->
+    <div id="videoFrame">
+      <video id="exerciseVideo" muted autoplay playsinline controls loop></video>
+      <p id="videoError" class="hidden">Vidéo non disponible…</p>
+    </div>
+
+    <p style="font-size:0.9rem; opacity:0.7; text-align:center;">⏎ Entrée &nbsp;: passer / confirmer &nbsp;|&nbsp; Cliquer chrono : pause</p>
+  </div>
+
+  <!-- =========== Écran Stats =========== -->
+  <div id="statsScreen" class="screen">
+    <h1>Bravo ! Séance terminée 🎉</h1>
+    <div class="stats-cards">
+      <div class="stats-card">
+        <div class="stats-label">Temps total</div>
+        <div class="stats-value" id="statsTime">00:00</div>
+      </div>
+      <div class="stats-card">
+        <div class="stats-label">Nombre d'exercices</div>
+        <div class="stats-value" id="statsCount">0</div>
+      </div>
+    </div>
+    <div class="stats-chart">
+      <canvas id="pieChart" width="220" height="220"></canvas>
+      <div id="pieLegend" class="pie-legend"></div>
+    </div>
+    <button id="restartBtn" class="big-btn">Recommencer</button>
+  </div>
+
+  <audio id="beep" src="sounds/beep.mp3"></audio>
+  <audio id="beep2" src="sounds/beep2.mp3"></audio>
+<audio id="honk" src="sounds/honk.mp3"></audio>
+<audio id="sifflet" src="sounds/sifflet.mp3"></audio>
+
+  <script>
+    /* ================ Config ================= */
+    const PREP_TIME = 3;
+    const EXERCISES = [
+      {name:"Crunch",                   sides:false, type:"abdos"},
+      {name:"Toucher Talons",           sides:false, type:"abdos"},
+      {name:"Toucher Ciel",             sides:false, type:"abdos"},
+      {name:"Crunch 90°",               sides:false, type:"abdos"},
+      {name:"Dips",                     sides:false, type:"bras"},
+      {name:"Squat",                    sides:false, type:"jambes"},
+      {name:"Russian Twist",            sides:false, type:"abdos"},
+      {name:"Pont",                     sides:false, type:"dos"},
+      {name:"Planche Costal",           sides:true,  type:"abdos"},
+      {name:"Planche Banane",           sides:false, type:"dos"},
+      {name:"Superman",                 sides:false, type:"dos"},
+      {name:"Abdos Proton",             sides:false, type:"abdos"},
+      {name:"Momie",                    sides:false, type:"abdos"},
+      {name:"Planche",                  sides:false, type:"abdos"},
+      {name:"Pompes",                   sides:false, type:"bras"},
+      {name:"Fente",                    sides:true,  type:"jambes"},
+      {name:"Chaise",                   sides:false, type:"jambes"},
+      {name:"Extension Mollet",         sides:true,  type:"jambes"},
+      {name:"Planche croisée",          sides:false, type:"abdos"}
+    ];
+    const videoFolder = "videos/";
+
+    /* ================ State ================= */
+    const state = {
+      exTime:30,
+      restTime:15,
+      queue:[],
+      index:0,
+      phase:"idle", // idle | prep | exercise | rest | delay | finished
+      remaining:0,
+      totalSec:0,
+      timerId:null,
+      paused:false
+    };
+
+    /* ================ DOM ================= */
+    const $ = id => document.getElementById(id);
+
+    const pad = n => String(n).padStart(2,"0");
+    const mmss = s => `${pad(Math.floor(s/60))}:${pad(s%60)}`;
+
+    function updateChronos(){
+      $("chronoExo").textContent = pad(state.remaining);
+      $("chronoGeneral").textContent = mmss(state.totalSec);
+    }
+
+    function updateProgress(){
+      const total = state.queue.length;
+      let done;
+      if(state.phase === "prep" || state.phase === "rest") {
+        done = Math.min(state.index + 2, total); // numéro du prochain exo
+      } else {
+        done = Math.min(state.index + 1, total); // exo courant
+      }
+      $("progressFill").style.width = `${(done/total)*100}%`;
+      $("progressText").textContent = `${done}/${total}`;
+    }
+
+    /* ================ Vidéo ================= */
+    function loadVideo(label){
+      // Retire "gauche" ou "droite" à la fin si présent
+      let base = label.replace(/\s+(gauche|droite)$/i, "");
+      const vid = $("exerciseVideo"), err = $("videoError");
+      vid.classList.remove("hidden"); err.classList.add("hidden");
+      vid.src = `${videoFolder}${base}.mp4`;
+      vid.load();
+      vid.oncanplay = () => { vid.play().catch(()=>{}); };
+      vid.onerror = () => {
+        vid.classList.add("hidden");
+        err.textContent = `Vidéo non disponible pour « ${base} »`;
+        err.classList.remove("hidden");
+      };
+    }
+    function hideVideo(){ $("exerciseVideo").pause(); $("exerciseVideo").classList.add("hidden"); }
+
+    /* ================ Queue ================= */
+    const shuffle=arr=>arr.sort(()=>Math.random()-0.5);
+    function buildQueue(groups){
+      const type = $("exType").value;
+      let filtered = (type === "all") ? EXERCISES : EXERCISES.filter(ex => ex.type === type);
+      return shuffle([...filtered]).slice(0,groups).flatMap(ex=>ex.sides?[`${ex.name} gauche`,`${ex.name} droite`]:[ex.name]);
+    }
+
+    /* ================ Phases helpers ================= */
+    function setCapsule(cls){ $("exoCapsule").className=`capsule timer-box ${cls}`; }
+
+    function launchPrep(){
+      if(state.index>=state.queue.length){ finishWorkout(); return; }
+      state.phase="prep"; state.remaining=PREP_TIME;
+      $("exerciseName").textContent=state.queue[state.index];
+      setCapsule("prep-phase");
+      // Affiche la vidéo du prochain exercice si possible
+      if(state.index < state.queue.length) {
+        loadVideo(state.queue[state.index]);
+      } else {
+        hideVideo();
+      }
+      updateChronos();
+    }
+
+    function startExercise(){
+      state.phase="exercise"; state.remaining=state.exTime;
+      $("exerciseName").textContent=state.queue[state.index];
+      setCapsule("exercise-phase"); loadVideo(state.queue[state.index]); updateChronos();
+    }
+
+    function startRest(){
+      state.phase="rest"; state.remaining=state.restTime;
+      const nextName = (state.index+1<state.queue.length)? state.queue[state.index+1] : "Fin";
+      $("exerciseName").textContent=`Repos - Exercice suivant : ${nextName}`;
+      setCapsule("rest-phase");
+      // Affiche la vidéo du prochain exercice si possible
+      if(state.index+1 < state.queue.length) {
+        loadVideo(state.queue[state.index+1]);
+      } else {
+        hideVideo();
+      }
+      updateChronos();
+    }
+
+    function startDelay(){
+      state.phase="delay"; state.remaining=0;
+      $("exerciseName").textContent="Prêt pour l'exo suivant ? (Enter)";
+      setCapsule("delay-phase"); hideVideo(); updateChronos();
+
+      // Si mode automatique, passe à l'exercice suivant immédiatement
+      if($("autoMode").value === "yes"){
+        handleNext();
+      }
+    }
+
+    function finishWorkout(){
+      clearInterval(state.timerId);
+      state.phase="finished";
+      setCapsule("idle-phase");
+      $("exerciseName").textContent="Séance terminée !";
+      hideVideo();
+      setTimeout(showStats, 800); // petite pause avant stats
+    }
+
+    function showStats(){
+      $("workoutScreen").classList.remove("active");
+      $("statsScreen").classList.add("active");
+
+      // Temps total
+      $("statsTime").textContent = mmss(state.totalSec);
+
+      // Nombre d'exercices
+      $("statsCount").textContent = state.queue.length;
+
+      // Répartition des types
+      const typeColors = {
+        abdos: "#1e88e5",
+        dos: "#43a047",
+        jambes: "#ef6c00",
+        bras: "#c62828",
+        autre: "#888"
+      };
+      const typeLabels = {
+        abdos: "Abdos",
+        dos: "Dos",
+        jambes: "Jambes",
+        bras: "Bras",
+        autre: "Autre"
+      };
+      const typeCounts = {};
+      state.queue.forEach(label => {
+        let base = label.replace(/\s+(gauche|droite)$/i, "");
+        let ex = EXERCISES.find(e => e.name === base);
+        let type = ex ? ex.type : "autre";
+        typeCounts[type] = (typeCounts[type]||0)+1;
+      });
+
+      // Dessine le camembert
+      const ctx = $("pieChart").getContext("2d");
+      ctx.clearRect(0,0,220,220);
+      let total = state.queue.length, start=0;
+      Object.entries(typeCounts).forEach(([type,count])=>{
+        const angle = (count/total)*2*Math.PI;
+        ctx.beginPath();
+        ctx.moveTo(110,110);
+        ctx.arc(110,110,100,start,start+angle);
+        ctx.closePath();
+        ctx.fillStyle = typeColors[type] || "#888";
+        ctx.fill();
+        start += angle;
+      });
+
+      // Affiche la légende en dehors du canvas
+      const legend = $("pieLegend");
+      legend.innerHTML = "";
+      Object.entries(typeCounts).forEach(([type,count])=>{
+        const item = document.createElement("div");
+        item.className = "pie-legend-item";
+        item.innerHTML = `<span class="pie-legend-color" style="background:${typeColors[type]||"#888"}"></span>${typeLabels[type]} <span style="opacity:0.7;">(${count})</span>`;
+        legend.appendChild(item);
+      });
+    }
+
+    /* ================ Tick ================= */
+    function tick(){
+      if(state.paused) return;
+      state.totalSec++;
+      switch(state.phase){
+        case "prep":
+          if(state.remaining === 1){
+            const sifflet = $("sifflet");
+            sifflet.currentTime = 0;
+            sifflet.play();
+            setTimeout(() => { sifflet.pause(); sifflet.currentTime = 0; }, 1000);
+          }
+          if(--state.remaining<=0) startExercise();
+          break;
+        case "exercise":
+          // Joue le bip AVANT de décrémenter
+          if(state.remaining === 3 || state.remaining === 2 || state.remaining === 1){
+            $("beep").currentTime = 0;
+            $("beep").play();
+          }
+          if(state.remaining === 0){
+            $("beep2").currentTime = 0;
+            $("beep2").play();
+          }
+          // Puis décrémente et vérifie la fin
+          if(--state.remaining < 0) startRest();
+          break;
+        case "rest":
+          if(state.remaining===1){
+            $("honk").currentTime = 0;
+            $("honk").play();
+          }
+          if(--state.remaining<=0) startDelay();
+          break;
+        case "delay":
+          state.remaining++;
+          break;
+      }
+      updateChronos();
+    }
+
+    function startEngine(){ clearInterval(state.timerId); state.timerId=setInterval(tick,1000); }
+
+    /* ================ Pause ================= */
+    function togglePause(){
+      if(state.phase==="idle"||state.phase==="finished") return;
+      state.paused=!state.paused;
+      document.body.classList.toggle("paused",state.paused);
+      if(state.paused){ clearInterval(state.timerId); $("exerciseVideo").pause(); }
+      else{ if(state.phase==="exercise") loadVideo(state.queue[state.index]); startEngine(); }
+    }
+
+    /* ================ Navigation ================= */
+    function gotoPrev(){ if(state.index===0) return; state.index--; updateProgress(); launchPrep(); }
+    function confirmNext(){ state.index++; updateProgress(); launchPrep(); }
+
+    function handleNext(){
+      // Passe toujours à la phase grise du prochain exo
+      if(state.index < state.queue.length - 1) {
+        state.index++;
+        updateProgress();
+        launchPrep();
+      } else {
+        finishWorkout();
+      }
+    }
+
+    $("prevBtn").addEventListener("click",gotoPrev);
+    $("nextBtn").addEventListener("click",handleNext);
+    document.addEventListener("keydown",e=>{ if(e.key==="Enter") handleNext(); });
+    $("exoCapsule").addEventListener("click",togglePause);
+
+    /* ================ Lancement ================= */
+    $("startBtn").addEventListener("click",()=>{
+      state.exTime = Math.max(5,parseInt($("exDuration").value,10)||30);
+      state.restTime= Math.max(5,parseInt($("restDuration").value,10)||15);
+      const groups=Math.max(1,parseInt($("exCount").value,10)||1);
+      state.queue=buildQueue(groups);
+      state.index=0; state.totalSec=0; state.paused=false; document.body.classList.remove("paused");
+      updateProgress();
+      $("setupScreen").classList.remove("active"); $("workoutScreen").classList.add("active");
+      launchPrep(); startEngine();
+    });
+
+    /* ================ Stats ================= */
+    function updateStats(){
+      $("statsTime").textContent = mmss(state.totalSec);
+      $("statsCount").textContent = state.queue.length;
+      // TODO: Pie chart data
+    }
+
+    $("restartBtn").addEventListener("click",()=>{
+      state.index = 0;
+      state.totalSec = 0;
+      state.paused = false;
+      document.body.classList.remove("paused");
+      $("setupScreen").classList.add("active");
+      $("workoutScreen").classList.remove("active");
+      $("statsScreen").classList.remove("active");
+    });
+
+    document.addEventListener("visibilitychange",()=>{
+      if(document.visibilityState === "hidden") togglePause();
+    });
+
+    window.addEventListener("beforeunload",e=>{
+      if(state.phase !== "idle" && state.phase !== "finished") {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    });
+  </script>
+</body>
+</html>

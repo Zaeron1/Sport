@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Séance de Sport</title>
+  <style>
+    :root {
+      --bg: #121212;
+      --surface: #1e1e1e;
+      --text: #e0e0e0;
+      --primary: #1e88e5;
+      --green: #2e7d32;
+      --orange: #ef6c00;
+      --red:   #c62828;
+    }
+
+    /* ========= Layout ========= */
+    html, body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", Arial, sans-serif;
+      overflow-y: auto; /* toute la page scroll si nécessaire */
+    }
+    h1, h2 { margin: 0; text-align: center; }
+
+    /* ========= Screens ========= */
+    .screen {
+      display: none;
+      width: 100%;
+      min-height: 100vh;
+      padding: 20px;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 30px;
+    }
+    .screen.active { display: flex; }
+
+    /* ========= Setup ========= */
+    #setupScreen label { display: flex; flex-direction: column; font-size: 1.1rem; gap: 8px; }
+    #setupScreen input { padding: 15px 20px; border-radius: 10px; border: none; background: #2a2a2a; color: var(--text); width: 200px; font-size: 1.3rem; text-align: center; }
+    #setupScreen button { padding: 15px 40px; border: none; border-radius: 12px; background: var(--primary); color: #fff; font-size: 1.4rem; font-weight: 600; cursor: pointer; transition: background 0.3s; }
+    #setupScreen button:hover { background: #1565c0; }
+
+    /* ========= Workout ========= */
+    #exerciseName { font-size: 2rem; min-height: 3rem; text-align: center; }
+
+    .timer {
+      font-size: 5.5rem;
+      font-variant-numeric: tabular-nums;
+      width: 90%; max-width: 1000px; height: 150px;
+      border-radius: 20px;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.3s;
+    }
+    .exercise { background: var(--green); }
+    .rest     { background: var(--orange); }
+    .delay    { background: var(--red); }
+    .idle     { background: #424242; }
+
+    /* Progress bar */
+    #progressWrapper { width: 90%; max-width: 1000px; display: flex; align-items: center; gap: 10px; }
+    #progressBar   { flex: 1; background: #333; height: 14px; border-radius: 8px; overflow: hidden; }
+    #progressFill  { height: 100%; width: 0%; background: var(--primary); transition: width 0.3s; }
+    #doneCount, #totalCount { width: 40px; text-align: center; font-size: 0.95rem; }
+
+    #totalChrono { font-size: 1rem; opacity: 0.8; }
+
+    /* ---- Video ---- */
+    #videoFrame {
+      background: var(--surface);
+      padding: 20px;
+      border-radius: 20px;
+      width: 90%;
+      max-width: 1000px;
+      max-height: 40vh;  /* taille raisonnable, page scrollera si dépasse */
+    }
+    video {
+      width: 100%;
+      height: auto;
+      max-height: 38vh;
+      object-fit: contain;
+      border-radius: 12px;
+      display: block;
+    }
+
+    .hidden { display: none; }
+    #videoError { color: var(--red); text-align: center; margin-top: 10px; }
+
+    #hint { font-size: 0.9rem; opacity: 0.7; text-align: center; }
+  </style>
+</head>
+<body>
+  <!-- ═════════ Setup Screen ═════════ -->
+  <div id="setupScreen" class="screen active">
+    <h1>Configure ta séance</h1>
+    <label>Durée exercice (secondes)
+      <input type="number" id="exDuration" value="30" min="5" />
+    </label>
+    <label>Durée pause (secondes)
+      <input type="number" id="restDuration" value="15" min="5" />
+    </label>
+    <label>Nombre d'exercices (groupes)
+      <input type="number" id="exCount" value="6" min="1" />
+    </label>
+    <button id="startBtn">Démarrer</button>
+  </div>
+
+  <!-- ═════════ Workout Screen ═════════ -->
+  <div id="workoutScreen" class="screen">
+    <h2 id="exerciseName">Prêt&nbsp;?</h2>
+    <div id="timer" class="timer idle">0</div>
+
+    <!-- Progress bar -->
+    <div id="progressWrapper">
+      <span id="doneCount">0</span>
+      <div id="progressBar"><div id="progressFill"></div></div>
+      <span id="totalCount">0</span>
+    </div>
+
+    <!-- Chrono total -->
+    <p id="totalChrono">00:00</p>
+
+    <!-- Vidéo -->
+    <div id="videoFrame">
+      <video id="exerciseVideo" class="hidden" controls autoplay muted playsinline></video>
+      <p id="videoError" class="hidden">Vidéo non disponible…</p>
+    </div>
+
+    <p id="hint">⏎ Enter : passer l’exercice, la pause ou le retard</p>
+  </div>
+
+  <script>
+    /* ============ Config data ============ */
+    // sides:true ⇒ l'exercice se fait gauche + droite (deux fois à la suite)
+    const EXERCISES = [
+      {name:"Crunch",            sides:false},
+      {name:"Toucher Talons",            sides:false},
+      {name:"Toucher Ciel",            sides:false},
+      {name:"Crunch 90°",            sides:false},
+      {name:"Dips",            sides:false},
+      {name:"Squat",            sides:false},
+      {name:"Russian Twist",            sides:false},
+      {name:"Pont",            sides:false},
+      {name:"Planche Costal",            sides:true},
+      {name:"Planche Banane",            sides:false},
+      {name:"Superman",            sides:false},
+      {name:"Abdos Proton",            sides:false},
+      {name:"Momie",            sides:false},
+      {name:"Planche",            sides:false},
+      {name:"Fente",            sides:true},
+      {name:"Chaise",            sides:false},
+      {name:"Extension Mollet",            sides:true},
+      {name:"Planche croisée",            sides:false},
+      
+    ];
+    const videoFolder = "videos/";
+
+    /* ============ State ============ */
+    const state = {
+      phase: "idle",      // idle | exercise | rest | delay
+      exTime: 30,
+      restTime: 15,
+      totalExercises: 0,   // nombre ELEMENTS dans la queue (gauche/droite compris)
+      doneExercises: 0,
+      totalSeconds: 0,
+      remaining: 0,
+      queue: [],
+      currentExercise: ""
+    };
+    let intervalId = null;
+
+    /* ============ DOM shortcuts ============ */
+    const $ = id => document.getElementById(id);
+
+    /* ============ Helpers ============ */
+    const shuffle = arr => arr.sort(()=>Math.random()-0.5);
+    const formatClock = sec => `${String(Math.floor(sec/60)).padStart(2,"0")}:${String(sec%60).padStart(2,"0")}`;
+
+    function hideVideo(){ const vid=$("exerciseVideo"); vid.pause(); vid.classList.add("hidden"); }
+
+    function loadVideo(label){
+      const base = label.split(" ")[0]; // retire "gauche/droite" pour la vidéo
+      const vid=$("exerciseVideo"), err=$("videoError");
+      vid.classList.add("hidden"); err.classList.add("hidden");
+      vid.src = `${videoFolder}${base}.mp4`;
+      vid.load();
+      vid.oncanplay = ()=>{ err.classList.add("hidden"); vid.classList.remove("hidden"); vid.play().catch(()=>{}); };
+      vid.onerror = ()=>{ vid.classList.add("hidden"); err.textContent = `Vidéo non disponible pour « ${base} »`; err.classList.remove("hidden"); };
+    }
+
+    function updateUI(){
+      $("timer").textContent      = state.remaining;
+      $("doneCount").textContent  = state.doneExercises;
+      $("totalCount").textContent = state.totalExercises;
+      $("progressFill").style.width = `${(state.doneExercises/state.totalExercises)*100}%`;
+      $("totalChrono").textContent = formatClock(state.totalSeconds);
+    }
+
+    const setPhase = p => { const t=$("timer"); t.classList.remove("exercise","rest","delay","idle"); t.classList.add(p); };
+
+    /* ============ Queue builder ============ */
+    function buildQueue(groupCount){
+      const groups = shuffle([...EXERCISES]).slice(0, groupCount);
+      const queue = [];
+      groups.forEach(ex=>{
+        if(ex.sides){
+          queue.push(`${ex.name} gauche`, `${ex.name} droite`);
+        } else {
+          queue.push(ex.name);
+        }
+      });
+      return queue; // les items gauche/droite sont déjà consécutifs
+    }
+
+    /* ============ Core ============ */
+    function nextExercise(){
+      if(state.doneExercises >= state.totalExercises){ endWorkout(); return; }
+      state.currentExercise = state.queue.shift();
+      $("exerciseName").textContent = state.currentExercise;
+      loadVideo(state.currentExercise);
+      state.phase = "exercise";
+      state.remaining = state.exTime;
+      setPhase("exercise");
+    }
+
+    function endWorkout(){
+      clearInterval(intervalId);
+      $("exerciseName").textContent = "Séance terminée !";
+      setPhase("idle");
+      hideVideo();
+    }
+
+    function tick(){
+      state.totalSeconds++;
+      switch(state.phase){
+        case "exercise":
+          state.remaining--;
+          if(state.remaining<=0){
+            state.doneExercises++;
+            state.phase = "rest";
+            state.remaining = state.restTime;
+            setPhase("rest"); $("exerciseName").textContent = "Repos";
+            hideVideo();
+          }
+          break;
+        case "rest":
+          state.remaining--;
+          if(state.remaining<=0){ state.phase = "delay"; state.remaining = 0; setPhase("delay"); }
+          break;
+        case "delay":
+          state.remaining++; break;
+      }
+      updateUI();
+    }
+
+    function startWorkout(){
+      state.totalSeconds = 0;
+      state.doneExercises = 0;
+      state.queue = buildQueue(parseInt($("exCount").value,10) || 1);
+      state.totalExercises = state.queue.length; // inclut les gauche/droite
+      nextExercise();
+      clearInterval(intervalId);
+      intervalId = setInterval(tick, 1000);
+      updateUI();
+    }
+
+    /* ============ Events ============ */
+    $("startBtn").addEventListener("click", ()=>{
+      state.exTime = Math.max(5, parseInt($("exDuration").value,10) || 30);
+      state.restTime = Math.max(5, parseInt($("restDuration").value,10) || 15);
+      $("setupScreen").classList.remove("active"); $("workoutScreen").classList.add("active");
+      startWorkout();
+    });
+
+    document.addEventListener("keydown", e=>{
+      if(e.key!=="Enter") return;
+      if(state.phase==="exercise"){
+        state.doneExercises++; state.phase="rest"; state.remaining=state.restTime; setPhase("rest"); $("exerciseName").textContent="Repos"; hideVideo();
+      } else if(state.phase==="rest" || state.phase==="delay"){
+        (state.doneExercises >= state.totalExercises) ? endWorkout() : nextExercise();
+      }
+      updateUI();
+    });
+  </script>
+</body>
+</html>
