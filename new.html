@@ -476,6 +476,8 @@
       setCapsule("idle-phase");
       $("exerciseName").textContent="Séance terminée !";
       hideVideo();
+      // Ajoute la sauvegarde Firebase ici
+      if(window.saveSessionToFirebase) window.saveSessionToFirebase(state.totalSec, state.queue.length);
       setTimeout(showStats, 800); // petite pause avant stats
     }
 
@@ -591,17 +593,23 @@
     }
 
     /* ================ Navigation ================= */
-    function gotoPrev(){ if(state.index===0) return; state.index--; updateProgress(); launchPrep(); }
-    function confirmNext(){ state.index++; updateProgress(); launchPrep(); }
+    function gotoPrev(){
+      if(state.index===0) return;
+      state.index--;
+      updateProgress();
+      launchPrep();
+      if(window.syncSession) window.syncSession();
+    }
 
     function handleNext(){
-      // Passe toujours à la phase grise du prochain exo
       if(state.index < state.queue.length - 1) {
         state.index++;
         updateProgress();
         launchPrep();
+        if(window.syncSession) window.syncSession();
       } else {
         finishWorkout();
+        if(window.syncSession) window.syncSession();
       }
     }
 
@@ -616,10 +624,14 @@
       state.restTime= Math.max(5,parseInt($("restDuration").value,10)||15);
       const groups=Math.max(1,parseInt($("exCount").value,10)||1);
       state.queue=buildQueue(groups);
-      state.index=0; state.totalSec=0; state.paused=false; document.body.classList.remove("paused");
+      state.index=0; state.totalSec=0; state.paused=false;
+      document.body.classList.remove("paused");
       updateProgress();
-      $("setupScreen").classList.remove("active"); $("workoutScreen").classList.add("active");
-      launchPrep(); startEngine();
+      $("setupScreen").classList.remove("active");
+      $("workoutScreen").classList.add("active");
+      launchPrep(); 
+      startEngine();
+      syncSession(); // 🔹 Ajouté ici
     });
 
     /* ================ Stats ================= */
@@ -652,27 +664,51 @@
   </script>
 
   <script type="module">
-    // Import the functions you need from the SDKs you need
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
-    import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-analytics.js";
-    // TODO: Add SDKs for Firebase products that you want to use
-    // https://firebase.google.com/docs/web/setup#available-libraries
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-analytics.js";
+  import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
 
-    // Your web app's Firebase configuration
-    // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-    const firebaseConfig = {
-      apiKey: "AIzaSyBco7exHVQc97BVNcn8mk8WfTbss1ZJH9Y",
-      authDomain: "sport-56ce4.firebaseapp.com",
-      projectId: "sport-56ce4",
-      storageBucket: "sport-56ce4.firebasestorage.app",
-      messagingSenderId: "465586305675",
-      appId: "1:465586305675:web:c938803c05e80528a7328e",
-      measurementId: "G-J7EL484C6W"
-    };
+  const firebaseConfig = {
+    apiKey: "AIzaSyBco7exHVQc97BVNcn8mk8WfTbss1ZJH9Y",
+    authDomain: "sport-56ce4.firebaseapp.com",
+    projectId: "sport-56ce4",
+    storageBucket: "sport-56ce4.firebasestorage.app",
+    messagingSenderId: "465586305675",
+    appId: "1:465586305675:web:c938803c05e80528a7328e",
+    measurementId: "G-J7EL484C6W"
+  };
 
-    // Initialize Firebase
-    const app = initializeApp(firebaseConfig);
-    const analytics = getAnalytics(app);
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+  const db = getDatabase(app);
+
+  // Synchronisation : écrire dans la base à chaque changement
+  function syncSession() {
+    set(ref(db, "session"), {
+      phase: state.phase,
+      index: state.index,
+      queue: state.queue
+    });
+  }
+
+  // Appelle syncSession dans handleNext et gotoPrev
+  window.syncSession = syncSession;
+
+  // Écoute les changements en temps réel
+  onValue(ref(db, "session"), (snapshot) => {
+    const data = snapshot.val();
+    if (data) {
+      state.phase = data.phase;
+      state.index = data.index;
+      state.queue = data.queue;
+      updateProgress();
+      if (state.phase === "prep") launchPrep();
+      else if (state.phase === "exercise") startExercise();
+      else if (state.phase === "rest") startRest();
+      else if (state.phase === "delay") startDelay();
+      else if (state.phase === "finished") finishWorkout();
+    }
+  });
   </script>
 </body>
 </html>
